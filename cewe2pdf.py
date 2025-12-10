@@ -449,6 +449,11 @@ def processDecorationBorders(decoration, areaHeight, areaWidth, pdf):
         bcolor = reportlab.lib.colors.blue
         if "color" in border.attrib:
             colorAttrib = border.get('color')
+            # Check if color has alpha channel (8 hex digits) and if it's transparent
+            # Format: #RRGGBBAA where AA is alpha (00 = transparent, FF = opaque)
+            if len(colorAttrib) == 9 and colorAttrib[7:9] == '00':
+                # Transparent border - don't draw it
+                return
             bcolor = reportlab.lib.colors.HexColor(colorAttrib)
 
         adjustment = 0
@@ -636,6 +641,16 @@ def processAreaTextTag(textTag, additional_fonts, area, areaHeight, areaRot, are
     rightPad = mcf2rl * tablermarg
     bottomPad = mcf2rl * tablebmarg
     topPad = mcf2rl * tabletmarg
+
+    # Parse textFormat element for vertical centering alignment
+    verticallyCenter = False
+    textFormatElement = textTag.find('textFormat')
+    if textFormatElement is not None:
+        # Read alignment attribute to check for ALIGNVCENTER
+        alignmentAttrib = textFormatElement.get('Alignment')
+        if alignmentAttrib is not None:
+            if 'ALIGNVCENTER' in alignmentAttrib:
+                verticallyCenter = True
 
     # if this is text art, then we do the whole thing differently.
     cwtextart = area.findall('decoration/cwtextart')
@@ -835,7 +850,19 @@ def processAreaTextTag(textTag, additional_fonts, area, areaHeight, areaRot, are
 
     frameWidth = max(frameWidth, finalTotalWidth)
 
-    newFrame = ColorFrame(frameBottomLeft_x, frameBottomLeft_y,
+    # Apply vertical centering if ALIGNVCENTER is specified
+    # When vertically centering, shrink frame to fit text exactly and position it centered
+    verticalCenterOffset = 0
+    if verticallyCenter and finalTotalHeight < (mcf2rl * areaHeight):
+        # Original area height from XML
+        originalFrameHeight = mcf2rl * areaHeight
+        # Use exact text height for the frame
+        frameHeight = finalTotalHeight
+        # Calculate offset to center this smaller frame in the original area
+        emptySpace = originalFrameHeight - finalTotalHeight
+        verticalCenterOffset = -emptySpace / 2.0  # Negative = move down
+
+    newFrame = ColorFrame(frameBottomLeft_x, frameBottomLeft_y + verticalCenterOffset,
         frameWidth, frameHeight,
         leftPadding=leftPad, bottomPadding=bottomPad,
         rightPadding=rightPad, topPadding=topPad,
